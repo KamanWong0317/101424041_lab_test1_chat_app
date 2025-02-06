@@ -68,7 +68,6 @@ app.post('/login', async (req, res) => {
     }
 });
 
-
 //import socket Server object from socket.io module
 const {Server} = require('socket.io')
 
@@ -83,10 +82,23 @@ const io = new Server(appServer)
 io.on("connection", (socket)=>{
     console.log(`Client conected. Client ID : ${socket.id}`);
 
+    socket.on("register-user", (username) => {
+        socket.username = username; // Store username in socket
+        console.log(`Registered user: ${username}`);
+    });
+
     // user joins chat room
     socket.on("join-room", async ({ username, room }) => {
         socket.join(room);
         io.to(room).emit("chat-message", { username: "System", message: `${username} join ${room} room`, room });
+
+        // history from MongoDB
+        try {
+            const chatHistory = await GroupMessage.find({ room }).sort({ date_sent: 1 }).limit(50); 
+            socket.emit("chat-history", chatHistory);
+        } catch (error) {
+            console.log("Failed to fetch chat history:", error);
+        }
     });
 
     // users leave the chat room
@@ -107,18 +119,17 @@ io.on("connection", (socket)=>{
         }
     });
 
-    // private Message
-    socket.on("private-message", async ({ from_user, to_user, message }) => {
-        try{
-            const timestamp = new Date().toISOString();
-            const newPrivateMessage = new PrivateMessage({ from_user, to_user, message });
-            await newPrivateMessage.save();
-            io.to(to_user).emit("private-message", { from_user, message , timestamp });
-        }catch{
-            console.log("MongoDB save failure:", err);
+    // get users API
+    app.get("/users", async (req, res) => {
+        try {
+            const users = await User.find({}, "username"); 
+            res.status(200).json(users);
+        } catch (err) {
+            res.status(500).json({ message: "cannot get users list", err });
         }
     });
 
+    
     // input indicator
     socket.on("typing", ({ username, room }) => {
         socket.to(room).emit("typing", { username, room });

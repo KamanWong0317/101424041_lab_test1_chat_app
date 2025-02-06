@@ -7,6 +7,35 @@ if (!username) {
     window.location.href = "login.html";
 } else {
     document.getElementById("user-name").textContent = username;
+    clientIO.emit("register-user", username);
+}
+
+
+// load Users
+async function loadUsers() {
+        const response = await fetch("http://localhost:3000/users");
+        const users = await response.json();
+
+        const userSelect = document.getElementById("private-user-select");
+        userSelect.innerHTML = '<option value="" disabled selected>Select a user</option>';
+
+        users.forEach(user => {
+            if (user.username !== localStorage.getItem("username")) {
+                userSelect.innerHTML += `<option value="${user.username}">${user.username}</option>`;
+            }
+        });
+}
+
+window.onload = () => {
+    loadUsers();
+};
+
+// time set
+const formatTimestamp = (timestamp) => {
+    const date = new Date(timestamp);
+    const hours = date.getHours().toString().padStart(2, "0");
+    const minutes = date.getMinutes().toString().padStart(2, "0");
+    return `[${hours}:${minutes}]`;
 }
 
 // join room
@@ -20,6 +49,7 @@ const joinRoom= () => {
 const  leaveRoom = () => {
     if (currentRoom) {
         clientIO.emit("leave-room", { username, room: currentRoom });
+        alert("You leave the chat room");
         currentRoom = null;
     }
 }
@@ -42,10 +72,59 @@ const sendChatMessage = () => {
     }
 };
 
+//display chat message 
+const displayMessage = (data) => {
+    if (data.room === currentRoom) {
+        const chatContainer = document.getElementById("chat-box");
+        const messageDiv = document.createElement("div");
+        
+        const formattedTime = formatTimestamp(data.timestamp);
+        messageDiv.textContent = `${formattedTime} ${data.username}: ${data.message}`;
+        
+        chatContainer.appendChild(messageDiv);
+        chatContainer.scrollTop = chatContainer.scrollHeight;
+    }
+}
+
+// Display group message
 clientIO.on('chat-message', (data)=>{
     if (data.room === currentRoom) {
-        document.getElementById("chat-box").innerHTML += `<p>${data.username}: ${data.message}</p><p></p>`;
+        const formattedTime = formatTimestamp(Date.now());
+        document.getElementById("chat-box").innerHTML += `<p>${formattedTime} ${data.username}: ${data.message}</p><p></p>`;
     }
+});
+
+// Send private message
+const sendPrivateMessage = () => {
+    const toUser = document.getElementById("private-user").value.trim();
+    const message = document.getElementById("private-message-input").value.trim();
+
+    if (toUser && message) {
+        clientIO.emit("private-message", { from_user: username, to_user: toUser, message });
+        document.getElementById("private-message-input").value = "";
+    } else {
+        alert("Please select a username and message!");
+    }
+}
+
+// Display private message
+clientIO.on("private-message", (data) => {
+    const formattedTime = formatTimestamp(Date.now());
+    document.getElementById("private-chat-box").innerHTML += `<p>${formattedTime} ${data.from_user}: ${data.message}</p>`;
+});
+
+// Receive group chat messages
+clientIO.on("chat-history", (chatHistory) => {
+    document.getElementById("chat-box").innerHTML = "";
+
+    chatHistory.forEach((message) => {
+        displayMessage({
+            username: message.from_user,
+            message: message.message,
+            room: message.room,
+            timestamp: message.date_sent
+        });
+    });
 });
 
 // typing indicator
@@ -67,5 +146,6 @@ clientIO.on("typing", (data) => {
 // logout
 const logout = () => {
     localStorage.removeItem("username");
+    alert("You are logouting");
     window.location.href = "/";
 }
